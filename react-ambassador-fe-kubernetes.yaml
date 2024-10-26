@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: react-ambassador-fe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: react-ambassador-fe
+  template:
+    metadata:
+      labels:
+        app: react-ambassador-fe
+    spec:
+      containers:
+      - name: react-ambassador-fe
+        image: gcr.io/lab-aas-ecommerce/react-ambassador-fe:v0.0.1
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+      nodeSelector:
+        kubernetes.io/hostname: "gke-node-kubernetes-frontend-pool-527b48f0-b00l"
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: react-ambassador-service
+spec:
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      nodePort: 31000
+  selector:
+    app: react-ambassador-fe
+  type: LoadBalancer

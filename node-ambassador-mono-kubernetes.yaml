@@ -1,0 +1,179 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: node-ambassador-mono
+---
+# PersistentVolumeClaim para MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc-ambassador
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-ambassador
+  labels:
+    app: mysql-ambassador
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-ambassador
+  template:
+    metadata:
+      labels:
+        app: mysql-ambassador
+    spec:
+      containers:
+      - name: mysql-ambassador
+        image: mysql:8
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "root"
+        - name: MYSQL_DATABASE
+          value: "ambassador"
+        - name: MYSQL_USER
+          value: "root-ambassador"
+        - name: MYSQL_PASSWORD
+          value: "root"
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc-ambassador
+      nodeSelector:
+        kubernetes.io/hostname: "gke-node-kubernetes-frontend-pool-527b48f0-5pnf"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-ambassador-service
+spec:
+  selector:
+    app: mysql-ambassador
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  type: ClusterIP
+---
+# PersistentVolumeClaim para almacenamiento de Redis
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc-ambassador
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# Deployment para Redis
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:latest
+        ports:
+        - containerPort: 6379
+        volumeMounts:
+        - mountPath: /data
+          name: redis-storage
+      volumes:
+      - name: redis-storage
+        persistentVolumeClaim:
+          claimName: redis-pvc-ambassador
+
+---
+# Service para Redis
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-ambassador-service
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+  type: ClusterIP  # Exposición interna en el clúster
+---
+# Despliegue del microservicio Node.js
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-ambassador-mono
+  labels:
+    app: node-ambassador-mono
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: node-ambassador-mono
+  template:
+    metadata:
+      labels:
+        app: node-ambassador-mono
+    spec:
+      containers:
+      - name: node-ambassador-mono
+        image: gcr.io/lab-aas-ecommerce/node-ambassador-mono:v0.0.1 # Reemplaza esto con tu imagen de Docker del microservicio
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8001
+        env:
+        - name: MYSQL_HOST
+          value: "mysql-ambassador-service"  # Nombre del servicio MySQL en Kubernetes
+        - name: MYSQL_PORT
+          value: "3306"
+        - name: MYSQL_USER
+          value: "root-ambassador"
+        - name: MYSQL_PASSWORD
+          value: "root"
+        - name: MYSQL_DATABASE
+          value: "ambassador"
+      nodeSelector:
+        kubernetes.io/hostname: "gke-node-kubernetes-frontend-pool-527b48f0-5pnf"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-ambassador-mono-service
+spec:
+  selector:
+    app: node-ambassador-mono
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8001
+  type: LoadBalancer
+
+

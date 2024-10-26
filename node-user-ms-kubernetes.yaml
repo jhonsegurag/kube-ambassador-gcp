@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: node-user-ms
+---
+# PersistentVolumeClaim para MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc-user
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-user
+  labels:
+    app: mysql-user
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-user
+  template:
+    metadata:
+      labels:
+        app: mysql-user
+    spec:
+      containers:
+      - name: mysql-user
+        image: mysql:8
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "root"
+        - name: MYSQL_DATABASE
+          value: "user"
+        - name: MYSQL_USER
+          value: "root-user"
+        - name: MYSQL_PASSWORD
+          value: "root"
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc-user
+      nodeSelector:
+        kubernetes.io/hostname: "gke-node-kubernetes-default-pool-77ec6422-pwg7"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-user-service
+spec:
+  selector:
+    app: mysql-user
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  type: ClusterIP
+---
+# Despliegue del microservicio Node.js
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-user-ms
+  labels:
+    app: node-user-ms
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: node-user-ms
+  template:
+    metadata:
+      labels:
+        app: node-user-ms
+    spec:
+      containers:
+      - name: node-user-ms
+        image: gcr.io/lab-aas-ecommerce/node-user-ms:v0.0.1 # Reemplaza esto con tu imagen de Docker del microservicio
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8002
+        env:
+        - name: MYSQL_HOST
+          value: "mysql-user-service"  # Nombre del servicio MySQL en Kubernetes
+        - name: MYSQL_PORT
+          value: "3306"
+        - name: MYSQL_USER
+          value: "root-user"
+        - name: MYSQL_PASSWORD
+          value: "root"
+        - name: MYSQL_DATABASE
+          value: "user"
+      nodeSelector:
+        kubernetes.io/hostname: "gke-node-kubernetes-default-pool-77ec6422-pwg7"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-user-ms-service
+spec:
+  selector:
+    app: node-user-ms
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8002
+  type: LoadBalancer
+
+

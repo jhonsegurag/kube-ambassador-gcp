@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: node-auth-ms
+---
+# PersistentVolumeClaim para MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc-auth
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-auth
+  labels:
+    app: mysql-auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-auth
+  template:
+    metadata:
+      labels:
+        app: mysql-auth
+    spec:
+      containers:
+      - name: mysql-auth
+        image: mysql:8
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "root"
+        - name: MYSQL_DATABASE
+          value: "auth"
+        - name: MYSQL_USER
+          value: "root-auth"
+        - name: MYSQL_PASSWORD
+          value: "root"
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc-auth
+      nodeSelector:
+        kubernetes.io/hostname: "gke-node-kubernetes-default-pool-77ec6422-4bp9"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-auth-service
+spec:
+  selector:
+    app: mysql-auth
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  type: ClusterIP
+---
+# Despliegue del microservicio Node.js
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-auth-ms
+  labels:
+    app: node-auth-ms
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: node-auth-ms
+  template:
+    metadata:
+      labels:
+        app: node-auth-ms
+    spec:
+      containers:
+      - name: node-auth-ms
+        image: gcr.io/lab-aas-ecommerce/node-auth-ms:v0.0.1 # Reemplaza esto con tu imagen de Docker del microservicio
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8001
+        env:
+        - name: MYSQL_HOST
+          value: "mysql-auth-service"  # Nombre del servicio MySQL en Kubernetes
+        - name: MYSQL_PORT
+          value: "3306"
+        - name: MYSQL_USER
+          value: "root-auth"
+        - name: MYSQL_PASSWORD
+          value: "root"
+        - name: MYSQL_DATABASE
+          value: "auth"
+      nodeSelector:
+        kubernetes.io/hostname: "gke-node-kubernetes-default-pool-77ec6422-4bp9"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-auth-ms-service
+spec:
+  selector:
+    app: node-auth-ms
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8001
+  type: LoadBalancer
+
+
